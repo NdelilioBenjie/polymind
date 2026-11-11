@@ -216,7 +216,9 @@ export const usePolymind = create<PolymindState>()(
           messages: historyFor(conversation, turn, answer.modelId),
           signal: controller.signal,
           onStart: ({ simulated }) => patchAnswer(conversationId, answerId, (a) => ({ ...a, simulated })),
-          onAllowance: (remaining) => set({ allowanceRemaining: remaining }),
+          // Answers to one prompt finish in any order, so keep the lowest figure reported.
+          onAllowance: (remaining) =>
+            set((state) => ({ allowanceRemaining: Math.min(state.allowanceRemaining ?? remaining, remaining) })),
           onDelta: (text) => {
             firstTokenMs ??= Math.round(performance.now() - startedAt);
             buffered += text;
