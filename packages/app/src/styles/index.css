@@ -690,6 +690,9 @@ a { color: var(--brand); text-underline-offset: 0.18em; }
   inset: 0;
   z-index: 40;
   display: grid;
+  /* Definite tracks, so the dialog's percentage heights resolve against the
+     viewport instead of against its own (possibly very tall) content. */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   padding: 1.5rem;
   background: rgb(10 12 31 / 0.5);
@@ -701,6 +704,7 @@ a { color: var(--brand); text-underline-offset: 0.18em; }
   display: flex;
   flex-direction: column;
   width: min(100%, 30rem);
+  min-height: 0;
   max-height: min(100%, 44rem);
   border-radius: var(--radius-l);
   background: var(--surface);
