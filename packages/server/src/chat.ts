@@ -64,7 +64,9 @@ export function validateChatRequest(body: unknown): Validation {
 }
 
 function upstreamMessage(status: number, detail: string | undefined): string {
-  if (status === 401 || status === 403) return "The server's OpenRouter key was rejected. Check the key.";
+  if (status === 401) return "The server's OpenRouter key was rejected. Check the key.";
+  // 403 is about the model, not the key: moderation, region or data-policy restrictions.
+  if (status === 403) return detail || "This model declined the request. Pick another one.";
   if (status === 402) return "The server's OpenRouter credits have run out.";
   if (status === 404) return "This model is not reachable right now. Pick another one.";
   if (status === 429) return "This model is busy or rate limited. Wait a moment and retry.";
