@@ -53,6 +53,13 @@ describe("catalogue", () => {
     });
   });
 
+  it("does not treat variable-price routers as free", () => {
+    const auto = normaliseModel({ id: "openrouter/auto", name: "Auto Router", pricing: { prompt: "-1", completion: "-1" } });
+    expect(auto?.free).toBe(false);
+    expect(normaliseModel({ id: "a/b:free", pricing: { prompt: "0", completion: "0" } })?.free).toBe(true);
+    expect(normaliseModel({ id: "a/unknown" })?.free).toBe(false);
+  });
+
   it("drops models that cannot answer in text", () => {
     expect(normaliseModel({ id: "a/image", architecture: { output_modalities: ["image"] } })).toBeNull();
     expect(normaliseModel({ id: "no-slash" })).toBeNull();

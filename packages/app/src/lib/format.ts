@@ -19,6 +19,7 @@ const trim = (value: number): string => {
 
 export function formatPrice(model: Pick<ModelInfo, "free" | "promptPrice" | "completionPrice">): string {
   if (model.free) return "Free";
+  if (model.promptPrice === 0 && model.completionPrice === 0) return "Price varies by prompt";
   return `$${trim(model.promptPrice)} in, $${trim(model.completionPrice)} out per 1M tokens`;
 }
 

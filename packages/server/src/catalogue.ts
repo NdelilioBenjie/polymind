@@ -82,7 +82,9 @@ export function normaliseModel(raw: OpenRouterModel): Omit<ModelInfo, "available
     contextLength: Number(raw.context_length) || 0,
     promptPrice,
     completionPrice,
-    free: promptPrice === 0 && completionPrice === 0,
+    // Routers such as openrouter/auto report a price of -1, meaning "depends on
+    // the model chosen". Only an explicit zero counts as free.
+    free: Number(raw.pricing?.prompt) === 0 && Number(raw.pricing?.completion) === 0,
     vision: includes(raw.architecture?.input_modalities, "image"),
     created: Number(raw.created) || 0,
   };
