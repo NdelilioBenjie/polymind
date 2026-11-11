@@ -14,10 +14,12 @@ export interface Quota {
   refund(visitor: string): Promise<void>;
 }
 
-/** Minimal key-value contract so the counter logic can be tested without a real store. */
+/** Minimal counter contract. Both operations must be atomic, because one
+ *  prompt sent to several models arrives as several simultaneous requests. */
 export interface CounterStore {
-  get(key: string): Promise<number>;
-  set(key: string, value: number): Promise<void>;
+  /** Adds one unless the counter already reached `limit`. Returns the new count, or null if refused. */
+  increment(key: string, limit: number): Promise<number | null>;
+  decrement(key: string): Promise<void>;
 }
 
 export const today = (): string => new Date().toISOString().slice(0, 10);
@@ -37,16 +39,17 @@ export function createQuota(store: CounterStore, day: () => string = today): Quo
   return {
     async take(visitor, perVisitor, siteTotal) {
       const { own, site } = await keys(visitor);
-      const [used, total] = await Promise.all([store.get(own), store.get(site)]);
-      if (used >= perVisitor) return { allowed: false, remaining: 0, reason: "visitor" };
-      if (total >= siteTotal) return { allowed: false, remaining: perVisitor - used, reason: "site" };
-      await Promise.all([store.set(own, used + 1), store.set(site, total + 1)]);
-      return { allowed: true, remaining: perVisitor - used - 1 };
+      const used = await store.increment(own, perVisitor);
+      if (used === null) return { allowed: false, remaining: 0, reason: "visitor" };
+      if ((await store.increment(site, siteTotal)) === null) {
+        await store.decrement(own);
+        return { allowed: false, remaining: perVisitor - used + 1, reason: "site" };
+      }
+      return { allowed: true, remaining: perVisitor - used };
     },
     async refund(visitor) {
       const { own, site } = await keys(visitor);
-      const [used, total] = await Promise.all([store.get(own), store.get(site)]);
-      await Promise.all([store.set(own, Math.max(0, used - 1)), store.set(site, Math.max(0, total - 1))]);
+      await Promise.all([store.decrement(own), store.decrement(site)]);
     },
   };
 }
@@ -55,8 +58,15 @@ export function createQuota(store: CounterStore, day: () => string = today): Quo
 export function memoryStore(): CounterStore {
   const counts = new Map<string, number>();
   return {
-    get: async (key) => counts.get(key) ?? 0,
-    set: async (key, value) => void counts.set(key, value),
+    async increment(key, limit) {
+      const current = counts.get(key) ?? 0;
+      if (current >= limit) return null;
+      counts.set(key, current + 1);
+      return current + 1;
+    },
+    async decrement(key) {
+      counts.set(key, Math.max(0, (counts.get(key) ?? 0) - 1));
+    },
   };
 }
 

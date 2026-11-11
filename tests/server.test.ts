@@ -95,6 +95,12 @@ describe("daily allowance", () => {
     expect((await quota.take("1.1.1.1", 2, 100)).allowed).toBe(true);
   });
 
+  it("counts every answer when one prompt goes to several models at once", async () => {
+    const quota = createQuota(memoryStore(), () => "2026-01-01");
+    const results = await Promise.all([1, 2, 3, 4].map(() => quota.take("1.1.1.1", 3, 100)));
+    expect(results.filter((result) => result.allowed)).toHaveLength(3);
+  });
+
   it("enforces a ceiling across the whole site and resets each day", async () => {
     let day = "2026-01-01";
     const quota = createQuota(memoryStore(), () => day);
