@@ -11,11 +11,13 @@ export interface ModelInfo {
   vision: boolean;
   created: number;
   available: boolean;
+  tier: "free" | "premium" | "locked";
 }
 
 export interface Catalogue {
   mode: "live" | "demo";
-  access: "free" | "all";
+  access: "free" | "allowance" | "all";
+  allowance?: { perDay: number };
   source: "openrouter" | "sample";
   maxModelsPerPrompt: number;
   models: ModelInfo[];

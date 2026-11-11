@@ -183,6 +183,13 @@ a { color: var(--brand); text-underline-offset: 0.18em; }
   font-weight: 500;
 }
 
+.pm-tag--premium {
+  margin-left: 0.5rem;
+  background: color-mix(in srgb, var(--amber) 22%, var(--surface));
+  color: var(--ink);
+  vertical-align: 0.08em;
+}
+
 .pm-segmented {
   display: inline-flex;
   padding: 3px;

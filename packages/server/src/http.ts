@@ -5,7 +5,7 @@ export interface Env {
   get(name: string): string | undefined;
 }
 
-export type AccessPolicy = "free" | "all";
+export type AccessPolicy = "free" | "allowance" | "all";
 
 export interface ServerSettings {
   apiKey: string | undefined;
@@ -15,6 +15,12 @@ export interface ServerSettings {
   access: AccessPolicy;
   maxOutputTokens: number;
   allowedOrigins: string[];
+  /** Allowance mode: paid answers each visitor may request per day. */
+  dailyPremium: number;
+  /** Allowance mode: paid answers the whole site may serve per day. */
+  dailyPremiumTotal: number;
+  /** Allowance mode: paid models above this output price (USD per 1M tokens) stay locked. */
+  premiumPriceCeiling: number;
 }
 
 export const MAX_MODELS_PER_PROMPT = 4;
@@ -44,11 +50,19 @@ export function readSettings(env: Env): ServerSettings {
     apiBase = OPENROUTER_API;
   }
   const cap = Number(env.get("POLYMIND_MAX_OUTPUT_TOKENS"));
+  const requested = env.get("POLYMIND_MODEL_ACCESS")?.trim().toLowerCase();
+  const positive = (name: string, fallback: number): number => {
+    const value = Number(env.get(name));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
   return {
     apiKey,
     apiBase,
     mode: apiKey ? "live" : "demo",
-    access: env.get("POLYMIND_MODEL_ACCESS")?.trim().toLowerCase() === "all" ? "all" : "free",
+    access: requested === "all" || requested === "allowance" ? requested : "free",
+    dailyPremium: Math.floor(positive("POLYMIND_DAILY_PREMIUM", 5)),
+    dailyPremiumTotal: Math.floor(positive("POLYMIND_DAILY_PREMIUM_TOTAL", 200)),
+    premiumPriceCeiling: positive("POLYMIND_PREMIUM_PRICE_CEILING", 15),
     maxOutputTokens: Number.isFinite(cap) && cap >= 64 ? Math.min(Math.floor(cap), 16_000) : 2048,
     allowedOrigins: (env.get("POLYMIND_ALLOWED_ORIGINS") ?? "")
       .split(",")
@@ -72,7 +86,7 @@ export function corsHeaders(request: Request, settings: ServerSettings): Record<
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET, POST, OPTIONS",
     "access-control-allow-headers": "content-type",
-    "access-control-expose-headers": "x-polymind-mode",
+    "access-control-expose-headers": "x-polymind-mode, x-polymind-allowance-remaining",
     "access-control-max-age": "86400",
     vary: "origin",
   };

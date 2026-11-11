@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { ApiError, fetchCatalogue, streamChat } from "./api";
 import { titleFrom, uid } from "./lib/format";
+import { displayName, popularModels } from "./lib/popular";
 import { BUILTIN_PROMPTS, systemPrompt } from "./lib/prompts";
 import type {
   Answer,
@@ -86,6 +87,8 @@ export interface PolymindState {
   draft: string;
   /** A short message shown under the question box. */
   notice: string | null;
+  /** Premium answers left today, once the server has told us. */
+  allowanceRemaining: number | null;
 
   loadCatalogue: () => Promise<void>;
   setDraft: (draft: string) => void;
@@ -120,10 +123,12 @@ function reconcileSelection(selected: string[], catalogue: Catalogue): string[] 
   const kept = selected.filter((id) => usable.has(id)).slice(0, catalogue.maxModelsPerPrompt);
   if (kept.length > 0) return kept;
 
+  // First visit: lead with the best-known models, one per maker.
   const picks: ModelInfo[] = [];
-  const byRecency = [...usable.values()].sort((a, b) => b.created - a.created);
-  for (const model of byRecency) {
+  const candidates = [...popularModels(catalogue.models), ...[...usable.values()].sort((a, b) => b.created - a.created)];
+  for (const model of candidates) {
     if (picks.length === 2) break;
+    if (!model.available || model.id === "openrouter/auto") continue;
     if (!picks.some((pick) => pick.provider === model.provider)) picks.push(model);
   }
   return picks.map((model) => model.id);
@@ -211,6 +216,7 @@ export const usePolymind = create<PolymindState>()(
           messages: historyFor(conversation, turn, answer.modelId),
           signal: controller.signal,
           onStart: ({ simulated }) => patchAnswer(conversationId, answerId, (a) => ({ ...a, simulated })),
+          onAllowance: (remaining) => set({ allowanceRemaining: remaining }),
           onDelta: (text) => {
             firstTokenMs ??= Math.round(performance.now() - startedAt);
             buffered += text;
@@ -220,6 +226,9 @@ export const usePolymind = create<PolymindState>()(
           .then(() => finish({ status: "done" }))
           .catch((error: unknown) => {
             if ((error as Error).name === "AbortError") return finish({ status: "stopped" });
+            if (error instanceof ApiError && error.allowanceRemaining !== undefined) {
+              set({ allowanceRemaining: error.allowanceRemaining });
+            }
             const message = error instanceof ApiError ? error.message : "Something went wrong. Retry.";
             finish({ status: "error", error: message });
           });
@@ -238,6 +247,7 @@ export const usePolymind = create<PolymindState>()(
         catalogueError: null,
         draft: "",
         notice: null,
+        allowanceRemaining: null,
 
         async loadCatalogue() {
           if (platform.kind === "extension" && !apiBase(get())) {
@@ -316,7 +326,7 @@ export const usePolymind = create<PolymindState>()(
           const state = get();
           if (!text || state.selectedModelIds.length === 0) return;
 
-          const names = new Map(state.catalogue?.models.map((model) => [model.id, model.name]));
+          const names = new Map(state.catalogue?.models.map((model) => [model.id, displayName(model)]));
           const turn: Turn = {
             id: uid(),
             prompt: text,

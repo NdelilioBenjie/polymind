@@ -2,6 +2,9 @@ import { createSseParser } from "./lib/sse";
 import type { Catalogue, PageContext } from "./types";
 
 export class ApiError extends Error {
+  /** Premium answers left today, when the server said. */
+  allowanceRemaining?: number;
+
   constructor(
     message: string,
     readonly status: number,
@@ -25,7 +28,14 @@ async function toApiError(response: Response): Promise<ApiError> {
   } catch {
     /* not JSON */
   }
-  return new ApiError(message, response.status, code);
+  const error = new ApiError(message, response.status, code);
+  error.allowanceRemaining = readAllowance(response);
+  return error;
+}
+
+function readAllowance(response: Response): number | undefined {
+  const header = response.headers.get("x-polymind-allowance-remaining");
+  return header === null || header === "" ? undefined : Number(header);
 }
 
 const UNREACHABLE = "Polymind's server could not be reached. Check your connection and retry.";
@@ -63,6 +73,8 @@ export interface StreamOptions {
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onStart?: (info: { simulated: boolean }) => void;
+  /** Called whenever the server reports how many premium answers are left today. */
+  onAllowance?: (remaining: number) => void;
 }
 
 interface StreamChunk {
@@ -81,6 +93,8 @@ export async function streamChat(options: StreamOptions): Promise<void> {
   });
   if (!response.body) throw new ApiError("The server sent an empty reply.", 502, "empty_stream");
   options.onStart?.({ simulated: response.headers.get("x-polymind-mode") === "demo" });
+  const left = readAllowance(response);
+  if (left !== undefined) options.onAllowance?.(left);
 
   let failure: ApiError | null = null;
   const parser = createSseParser((data) => {

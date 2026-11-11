@@ -1,11 +1,17 @@
 import { Check, Lock, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatContext, formatPrice, voiceOf } from "../lib/format";
+import { displayMaker, displayName, popularModels } from "../lib/popular";
 import { usePolymind } from "../store";
 import type { ModelInfo } from "../types";
 import { Dialog } from "./Dialog";
 
-type Scope = "available" | "all";
+type Scope = "popular" | "free" | "all";
+const SCOPES: Array<[Scope, string]> = [
+  ["popular", "Popular"],
+  ["free", "Free"],
+  ["all", "All"],
+];
 const PAGE = 80;
 
 export function ModelPicker({ onClose }: { onClose: () => void }) {
@@ -13,33 +19,50 @@ export function ModelPicker({ onClose }: { onClose: () => void }) {
   const status = usePolymind((state) => state.catalogueStatus);
   const error = usePolymind((state) => state.catalogueError);
   const selected = usePolymind((state) => state.selectedModelIds);
+  const allowanceRemaining = usePolymind((state) => state.allowanceRemaining);
   const { toggleModel, loadCatalogue } = usePolymind.getState();
 
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<Scope>("available");
+  const [scope, setScope] = useState<Scope>("popular");
   const [shown, setShown] = useState(PAGE);
 
   const models = useMemo(() => catalogue?.models ?? [], [catalogue]);
-  const hasLocked = models.some((model) => !model.available);
+  const metered = catalogue?.mode === "live" && catalogue.access === "allowance";
+  const perDay = catalogue?.allowance?.perDay ?? 0;
   const limit = catalogue?.maxModelsPerPrompt ?? 4;
   const full = selected.length >= limit;
 
   const results = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return models
-      .filter((model) => scope === "all" || model.available)
-      .filter((model) => {
-        const haystack = `${model.name} ${model.providerName} ${model.id}`.toLowerCase();
-        return terms.every((term) => haystack.includes(term));
-      })
-      .sort((a, b) => b.created - a.created);
+    // Searching always looks through every model, whichever tab is open.
+    const pool =
+      terms.length > 0
+        ? [...models].sort((a, b) => b.created - a.created)
+        : scope === "popular"
+          ? popularModels(models)
+          : [...models].filter((model) => scope === "all" || model.free).sort((a, b) => b.created - a.created);
+    return pool.filter((model) => {
+      const haystack = `${displayName(model)} ${model.name} ${model.providerName} ${model.id}`.toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
   }, [models, query, scope]);
+
+  const allowanceNote = !metered
+    ? null
+    : allowanceRemaining === null
+      ? `${perDay} free premium answers a day`
+      : `${allowanceRemaining} of ${perDay} premium answers left today`;
 
   const row = (model: ModelInfo) => {
     const index = selected.indexOf(model.id);
     const isSelected = index !== -1;
     const disabled = !model.available || (!isSelected && full);
-    const details = [model.providerName, formatContext(model.contextLength), formatPrice(model)].filter(Boolean);
+    const premium = metered && model.tier === "premium";
+    const details = [
+      displayMaker(model),
+      formatContext(model.contextLength),
+      premium ? "" : formatPrice(model),
+    ].filter(Boolean);
     return (
       <li key={model.id}>
         <button
@@ -59,7 +82,10 @@ export function ModelPicker({ onClose }: { onClose: () => void }) {
         >
           <i className="pm-dot" aria-hidden />
           <span className="pm-model__text">
-            <strong>{model.name}</strong>
+            <strong>
+              {displayName(model)}
+              {premium && <span className="pm-tag pm-tag--premium">Premium</span>}
+            </strong>
             <small>{details.join(", ")}</small>
           </span>
           {isSelected ? <Check size={16} /> : !model.available ? <Lock size={14} /> : null}
@@ -90,16 +116,21 @@ export function ModelPicker({ onClose }: { onClose: () => void }) {
             }}
           />
         </label>
-        {hasLocked && (
-          <div className="pm-segmented" role="group" aria-label="Which models to list">
-            <button aria-pressed={scope === "available"} onClick={() => setScope("available")}>
-              Ready to use
+        <div className="pm-segmented" role="group" aria-label="Which models to list">
+          {SCOPES.map(([value, label]) => (
+            <button
+              key={value}
+              aria-pressed={scope === value && !query}
+              onClick={() => {
+                setScope(value);
+                setQuery("");
+                setShown(PAGE);
+              }}
+            >
+              {label}
             </button>
-            <button aria-pressed={scope === "all"} onClick={() => setScope("all")}>
-              Everything
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
       <div className="pm-picker__list">
@@ -125,7 +156,7 @@ export function ModelPicker({ onClose }: { onClose: () => void }) {
 
       <footer className="pm-dialog__foot">
         <span>
-          {results.length} of {models.length} models
+          {allowanceNote ?? `${results.length} of ${models.length} models`}
           {catalogue?.source === "sample" ? " (offline sample list)" : ""}
         </span>
         <button className="pm-btn pm-btn--primary" onClick={onClose}>

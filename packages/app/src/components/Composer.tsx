@@ -1,6 +1,7 @@
 import { ArrowUp, BookOpen, FileText, Link2, Plus, Square, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { hostOf, voiceOf } from "../lib/format";
+import { displayName } from "../lib/popular";
 import { getPlatform, isBusy, usePolymind } from "../store";
 
 interface ComposerProps {
@@ -38,7 +39,7 @@ export function Composer({ onOpenModels, onOpenPrompts, onAddLink, onReadTab }: 
     return () => clearTimeout(timer);
   }, [notice, setNotice]);
 
-  const names = new Map(catalogue?.models.map((model) => [model.id, model.name]));
+  const names = new Map(catalogue?.models.map((model) => [model.id, displayName(model)]));
   const canSend = draft.trim().length > 0 && selected.length > 0;
   const submit = () => {
     if (canSend) send(draft);

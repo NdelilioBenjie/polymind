@@ -1,6 +1,8 @@
 export { handleChat, validateChatRequest } from "./chat.ts";
-export type { ChatMessage, ChatRequest } from "./chat.ts";
-export { handleModels, normaliseModel, isModelAllowed } from "./catalogue.ts";
+export type { ChatDeps, ChatMessage, ChatRequest } from "./chat.ts";
+export { createQuota, memoryStore } from "./quota.ts";
+export type { Quota } from "./quota.ts";
+export { handleModels, normaliseModel, tierOf } from "./catalogue.ts";
 export type { CatalogueResponse, ModelInfo } from "./catalogue.ts";
 export { handlePage, extractReadableText, isPublicHttpUrl } from "./page.ts";
 export type { PageExtract } from "./page.ts";

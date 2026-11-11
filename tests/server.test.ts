@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { validateChatRequest, handleChat } from "../packages/server/src/chat.ts";
-import { handleModels, isModelAllowed, normaliseModel, resetCatalogueCache } from "../packages/server/src/catalogue.ts";
+import { handleModels, normaliseModel, resetCatalogueCache, tierOf } from "../packages/server/src/catalogue.ts";
+import { createQuota, memoryStore } from "../packages/server/src/quota.ts";
 import { corsHeaders, readSettings } from "../packages/server/src/http.ts";
 import { extractReadableText, isPublicHttpUrl } from "../packages/server/src/page.ts";
 
@@ -65,13 +66,43 @@ describe("catalogue", () => {
     expect(normaliseModel({ id: "no-slash" })).toBeNull();
   });
 
-  it("locks paid models when access is free", () => {
-    const free = readSettings(env({ OPENROUTER_API_KEY: "sk" }));
-    const all = readSettings(env({ OPENROUTER_API_KEY: "sk", POLYMIND_MODEL_ACCESS: "all" }));
-    expect(isModelAllowed({ free: false }, "a/b", free)).toBe(false);
-    expect(isModelAllowed({ free: true }, "a/b", free)).toBe(true);
-    expect(isModelAllowed(undefined, "a/b:free", free)).toBe(true);
-    expect(isModelAllowed({ free: false }, "a/b", all)).toBe(true);
+  it("sorts models into free, premium and locked by the access policy", () => {
+    const key = { OPENROUTER_API_KEY: "sk" };
+    const free = readSettings(env(key));
+    const allowance = readSettings(env({ ...key, POLYMIND_MODEL_ACCESS: "allowance" }));
+    const all = readSettings(env({ ...key, POLYMIND_MODEL_ACCESS: "all" }));
+    const paid = { free: false, completionPrice: 10 };
+    const pricey = { free: false, completionPrice: 40 };
+
+    expect(tierOf({ free: true, completionPrice: 0 }, "a/b", free)).toBe("free");
+    expect(tierOf(undefined, "a/b:free", free)).toBe("free");
+    expect(tierOf(paid, "a/b", free)).toBe("locked");
+    expect(tierOf(paid, "a/b", allowance)).toBe("premium");
+    expect(tierOf(pricey, "a/b", allowance)).toBe("locked");
+    expect(tierOf(pricey, "a/b", all)).toBe("premium");
+    expect(tierOf(pricey, "a/b", readSettings(env()))).toBe("free"); // demo mode simulates everything
+  });
+});
+
+describe("daily allowance", () => {
+  it("counts per visitor, stops at the limit and can refund", async () => {
+    const quota = createQuota(memoryStore(), () => "2026-01-01");
+    expect(await quota.take("1.1.1.1", 2, 100)).toEqual({ allowed: true, remaining: 1 });
+    expect(await quota.take("1.1.1.1", 2, 100)).toEqual({ allowed: true, remaining: 0 });
+    expect(await quota.take("1.1.1.1", 2, 100)).toMatchObject({ allowed: false, reason: "visitor" });
+    expect((await quota.take("2.2.2.2", 2, 100)).allowed).toBe(true);
+    await quota.refund("1.1.1.1");
+    expect((await quota.take("1.1.1.1", 2, 100)).allowed).toBe(true);
+  });
+
+  it("enforces a ceiling across the whole site and resets each day", async () => {
+    let day = "2026-01-01";
+    const quota = createQuota(memoryStore(), () => day);
+    expect((await quota.take("a", 5, 2)).allowed).toBe(true);
+    expect((await quota.take("b", 5, 2)).allowed).toBe(true);
+    expect(await quota.take("c", 5, 2)).toMatchObject({ allowed: false, reason: "site" });
+    day = "2026-01-02";
+    expect((await quota.take("c", 5, 2)).allowed).toBe(true);
   });
 });
 

@@ -1,6 +1,7 @@
-import { isModelAllowed, loadCatalogue } from "./catalogue.ts";
+import { loadCatalogue, tierOf } from "./catalogue.ts";
 import { demoStream } from "./demo.ts";
 import { corsHeaders, errorResponse, preflight, readSettings, type Env } from "./http.ts";
+import { memoryQuota, type Quota } from "./quota.ts";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -79,8 +80,14 @@ const SSE_HEADERS = {
   "x-accel-buffering": "no",
 };
 
+export interface ChatDeps {
+  /** Something that identifies the visitor, normally their IP address. */
+  visitor?: string;
+  quota?: Quota;
+}
+
 /** POST /api/chat. Streams Server-Sent Events in the OpenAI chunk format. */
-export async function handleChat(request: Request, env: Env): Promise<Response> {
+export async function handleChat(request: Request, env: Env, deps: ChatDeps = {}): Promise<Response> {
   const settings = readSettings(env);
   const early = preflight(request, settings);
   if (early) return early;
@@ -104,18 +111,35 @@ export async function handleChat(request: Request, env: Env): Promise<Response> 
     });
   }
 
-  if (settings.access === "free") {
+  let tier = "premium";
+  if (settings.access !== "all") {
     const { models } = await loadCatalogue();
-    const model = models.find((candidate) => candidate.id === chat.model);
-    if (!isModelAllowed(model, chat.model, settings)) {
-      return errorResponse(
-        403,
-        "model_locked",
-        "This model is not enabled on this server. Pick one marked Free.",
-        cors,
-      );
-    }
+    tier = tierOf(models.find((candidate) => candidate.id === chat.model), chat.model, settings);
   }
+  if (tier === "locked") {
+    return errorResponse(403, "model_locked", "This model is not enabled on this server. Pick another one.", cors);
+  }
+
+  // Paid answers come out of the visitor's daily allowance.
+  const metered = tier === "premium" && settings.access === "allowance";
+  const quota = deps.quota ?? memoryQuota;
+  const visitor = deps.visitor ?? "anonymous";
+  const allowanceHeaders: Record<string, string> = {};
+  if (metered) {
+    const result = await quota.take(visitor, settings.dailyPremium, settings.dailyPremiumTotal);
+    if (!result.allowed) {
+      const message =
+        result.reason === "site"
+          ? "Today's premium answers for this site are used up. Free models still work, and premium ones return tomorrow."
+          : `You have used today's ${settings.dailyPremium} free premium answers. Free models still work, and premium ones return tomorrow.`;
+      return errorResponse(429, "allowance_exhausted", message, {
+        ...cors,
+        "x-polymind-allowance-remaining": String(result.reason === "site" ? result.remaining : 0),
+      });
+    }
+    allowanceHeaders["x-polymind-allowance-remaining"] = String(result.remaining);
+  }
+  const refund = () => (metered ? quota.refund(visitor).catch(() => undefined) : Promise.resolve());
 
   const site = env.get("URL") ?? new URL(request.url).origin;
   let upstream: Response;
@@ -138,10 +162,12 @@ export async function handleChat(request: Request, env: Env): Promise<Response> 
       }),
     });
   } catch {
+    await refund();
     return errorResponse(502, "upstream_unreachable", "Could not reach the model provider.", cors);
   }
 
   if (!upstream.ok || !upstream.body) {
+    await refund();
     let detail: string | undefined;
     try {
       const payload = (await upstream.json()) as { error?: { message?: string } };
@@ -154,6 +180,6 @@ export async function handleChat(request: Request, env: Env): Promise<Response> 
   }
 
   return new Response(upstream.body, {
-    headers: { ...SSE_HEADERS, ...cors, "x-polymind-mode": "live" },
+    headers: { ...SSE_HEADERS, ...cors, ...allowanceHeaders, "x-polymind-mode": "live" },
   });
 }

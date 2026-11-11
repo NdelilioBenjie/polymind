@@ -15,6 +15,8 @@ Visitors never enter an API key. A small server function holds one key and decid
 - **Side-by-side comparison.** Pick up to four models. Each answer streams into its own column with its own colour, response time and word count, so differences are easy to spot.
 - **Chat with a page.** In the extension, one click reads the tab you are on. In the web app, paste a link and the server fetches the readable text. Every selected model can then answer questions about it.
 - **Selected-text actions.** In the extension, select text on any site to explain, summarise, rewrite or translate it. A right-click menu entry does the same.
+- **Popular models first.** The picker opens on the best-known families (GPT, Claude, Gemini, Grok, DeepSeek and more), plus "Polymind Auto", which lets OpenRouter choose a model for each prompt.
+- **A free daily allowance.** In allowance mode every visitor gets a few answers from paid models each day, counted per visitor and capped across the site, so a public demo cannot drain the owner's credits.
 - **Prompt library.** Reusable prompts with fill-in blanks written as `{{topic}}`. Six are built in and you can save your own.
 - **Private by default.** Chats and prompts live in the browser's local storage. The server stores nothing.
 - **Light and dark themes**, keyboard-accessible dialogs, reduced-motion support, and a layout that works from a 360 px side panel to a wide desktop.
@@ -83,7 +85,10 @@ npm run build:all         # web app and extension
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | none | Your OpenRouter key. Without it the site runs in demo mode. |
-| `POLYMIND_MODEL_ACCESS` | `free` | `free` lets visitors use only zero-cost models. `all` unlocks every model and spends your credits. |
+| `POLYMIND_MODEL_ACCESS` | `free` | `free`: zero-cost models only. `allowance`: paid models too, with a small daily allowance per visitor. `all`: everything, unlimited, on your credits. |
+| `POLYMIND_DAILY_PREMIUM` | `5` | Allowance mode: paid answers each visitor gets per day. |
+| `POLYMIND_DAILY_PREMIUM_TOTAL` | `200` | Allowance mode: paid answers the whole site serves per day. |
+| `POLYMIND_PREMIUM_PRICE_CEILING` | `15` | Allowance mode: paid models whose output price exceeds this many dollars per million tokens stay locked. |
 | `POLYMIND_MAX_OUTPUT_TOKENS` | `2048` | Cap on the length of a single answer. |
 | `POLYMIND_ALLOWED_ORIGINS` | none | Extra browser origins allowed to call the API, comma-separated. |
 | `POLYMIND_USE_NETLIFY_GATEWAY` | `false` | Netlify's AI Gateway injects its own OpenRouter credentials when you set no key, billed to your Netlify credits. Polymind ignores them unless this is `true`. |

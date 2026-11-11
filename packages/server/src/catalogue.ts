@@ -27,11 +27,18 @@ export interface ModelInfo {
   created: number;
   /** Whether this deployment lets visitors use the model. */
   available: boolean;
+  /** "premium" models cost the site owner money; "locked" ones are switched off. */
+  tier: ModelTier;
 }
+
+export type ModelTier = "free" | "premium" | "locked";
+type BaseModel = Omit<ModelInfo, "available" | "tier">;
 
 export interface CatalogueResponse {
   mode: "live" | "demo";
-  access: "free" | "all";
+  access: "free" | "allowance" | "all";
+  /** Present in allowance mode: paid answers each visitor gets per day. */
+  allowance?: { perDay: number };
   source: "openrouter" | "sample";
   maxModelsPerPrompt: number;
   models: ModelInfo[];
@@ -50,7 +57,7 @@ interface OpenRouterModel {
 const MODELS_URL = "https://openrouter.ai/api/v1/models";
 const TTL_MS = 10 * 60 * 1000;
 
-let cache: { at: number; models: Omit<ModelInfo, "available">[] } | null = null;
+let cache: { at: number; models: BaseModel[] } | null = null;
 
 const perMillion = (value: unknown): number => {
   const price = Number(value);
@@ -62,7 +69,7 @@ const includes = (list: unknown, item: string): boolean =>
 
 /** Turns one raw OpenRouter record into the compact shape the UI needs.
  *  Returns null for records that cannot hold a text conversation. */
-export function normaliseModel(raw: OpenRouterModel): Omit<ModelInfo, "available"> | null {
+export function normaliseModel(raw: OpenRouterModel): BaseModel | null {
   if (typeof raw.id !== "string" || !raw.id.includes("/")) return null;
   const outputs = raw.architecture?.output_modalities;
   if (Array.isArray(outputs) && !outputs.includes("text")) return null;
@@ -92,7 +99,7 @@ export function normaliseModel(raw: OpenRouterModel): Omit<ModelInfo, "available
 
 export async function loadCatalogue(
   fetcher: typeof fetch = fetch,
-): Promise<{ source: "openrouter" | "sample"; models: Omit<ModelInfo, "available">[] }> {
+): Promise<{ source: "openrouter" | "sample"; models: BaseModel[] }> {
   if (cache && Date.now() - cache.at < TTL_MS) return { source: "openrouter", models: cache.models };
   try {
     const response = await fetcher(MODELS_URL, { signal: AbortSignal.timeout(8000) });
@@ -100,7 +107,7 @@ export async function loadCatalogue(
     const payload = (await response.json()) as { data?: OpenRouterModel[] };
     const models = (payload.data ?? [])
       .map(normaliseModel)
-      .filter((model): model is Omit<ModelInfo, "available"> => model !== null);
+      .filter((model): model is BaseModel => model !== null);
     if (models.length === 0) throw new Error("Catalogue was empty");
     cache = { at: Date.now(), models };
     return { source: "openrouter", models };
@@ -110,13 +117,19 @@ export async function loadCatalogue(
   }
 }
 
-export function isModelAllowed(
-  model: Pick<ModelInfo, "free"> | undefined,
+/** Decides what a visitor may do with a model on this deployment. */
+export function tierOf(
+  model: Pick<ModelInfo, "free" | "completionPrice"> | undefined,
   modelId: string,
   settings: ServerSettings,
-): boolean {
-  if (settings.mode === "demo" || settings.access === "all") return true;
-  return model ? model.free : modelId.endsWith(":free");
+): ModelTier {
+  if (settings.mode === "demo") return "free";
+  if (model ? model.free : modelId.endsWith(":free")) return "free";
+  if (settings.access === "all") return "premium";
+  if (settings.access === "allowance" && model && model.completionPrice <= settings.premiumPriceCeiling) {
+    return "premium";
+  }
+  return "locked";
 }
 
 /** GET /api/models */
@@ -133,10 +146,11 @@ export async function handleModels(request: Request, env: Env): Promise<Response
     access: settings.access,
     source,
     maxModelsPerPrompt: MAX_MODELS_PER_PROMPT,
-    models: models.map((model) => ({
-      ...model,
-      available: isModelAllowed(model, model.id, settings),
-    })),
+    allowance: settings.mode === "live" && settings.access === "allowance" ? { perDay: settings.dailyPremium } : undefined,
+    models: models.map((model) => {
+      const tier = tierOf(model, model.id, settings);
+      return { ...model, tier, available: tier !== "locked" };
+    }),
   };
   return json(body, {
     headers: { ...cors, "cache-control": "public, max-age=300, s-maxage=900" },

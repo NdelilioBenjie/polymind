@@ -19,7 +19,7 @@ const rows: Array<[id: string, name: string, context: number, prompt: number, co
   ["tencent/hy4", "Tencent: Hy4", 1_048_576, 0.417, 1.25],
 ];
 
-export const SAMPLE_CATALOGUE: Omit<ModelInfo, "available">[] = rows.map(
+export const SAMPLE_CATALOGUE: Omit<ModelInfo, "available" | "tier">[] = rows.map(
   ([id, fullName, contextLength, promptPrice, completionPrice], index) => {
     const [providerName, ...rest] = fullName.split(": ");
     return {

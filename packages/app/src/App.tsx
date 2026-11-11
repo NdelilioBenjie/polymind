@@ -35,6 +35,7 @@ export function App() {
   const conversation = usePolymind((state) => state.conversations.find((c) => c.id === state.activeId));
   const catalogue = usePolymind((state) => state.catalogue);
   const ready = usePolymind((state) => state.catalogueStatus === "ready");
+  const allowanceLeft = usePolymind((state) => state.allowanceRemaining);
   const loadError = usePolymind((state) => (state.catalogueStatus === "error" ? state.catalogueError : null));
 
   const [dialog, setDialog] = useState<DialogName>(null);
@@ -159,7 +160,12 @@ export function App() {
             onAddLink={() => setDialog("link")}
             onReadTab={async () => void (await readTab())}
           />
-          <p className="pm-dock__note">AI models can be wrong. Check anything that matters.</p>
+          <p className="pm-dock__note">
+            {catalogue?.allowance && allowanceLeft !== null
+              ? `${allowanceLeft} of ${catalogue.allowance.perDay} premium answers left today. `
+              : ""}
+            AI models can be wrong. Check anything that matters.
+          </p>
         </div>
       </main>
 

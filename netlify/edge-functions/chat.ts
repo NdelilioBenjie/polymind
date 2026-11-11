@@ -1,7 +1,9 @@
-import type { Config } from "@netlify/edge-functions";
+import type { Config, Context } from "@netlify/edge-functions";
+import { blobQuota } from "../../packages/server/src/blob-quota.ts";
 import { handleChat } from "../../packages/server/src/chat.ts";
 
-export default (request: Request) => handleChat(request, { get: (name) => Netlify.env.get(name) });
+export default (request: Request, context: Context) =>
+  handleChat(request, { get: (name) => Netlify.env.get(name) }, { visitor: context.ip, quota: blobQuota() });
 
 export const config: Config = {
   path: "/api/chat",
