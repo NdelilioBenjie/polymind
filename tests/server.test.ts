@@ -15,6 +15,19 @@ describe("settings", () => {
     });
   });
 
+  it("ignores the key Netlify's AI Gateway injects unless the owner opts in", () => {
+    const injected = { OPENROUTER_API_KEY: "gateway-token", OPENROUTER_BASE_URL: "https://site.netlify.app/.netlify/ai/" };
+    expect(readSettings(env(injected))).toMatchObject({ mode: "demo", apiBase: "https://openrouter.ai/api/v1" });
+    expect(readSettings(env({ ...injected, POLYMIND_USE_NETLIFY_GATEWAY: "true" }))).toMatchObject({
+      mode: "live",
+      apiBase: "https://site.netlify.app/.netlify/ai",
+    });
+    expect(readSettings(env({ OPENROUTER_API_KEY: "sk-or-own" }))).toMatchObject({
+      mode: "live",
+      apiBase: "https://openrouter.ai/api/v1",
+    });
+  });
+
   it("only reflects origins it trusts", () => {
     const settings = readSettings(env({ POLYMIND_ALLOWED_ORIGINS: "https://a.example" }));
     const from = (origin: string) => corsHeaders(new Request("https://x.test", { headers: { origin } }), settings);

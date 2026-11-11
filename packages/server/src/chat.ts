@@ -14,7 +14,6 @@ export interface ChatRequest {
   maxTokens?: number;
 }
 
-const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MAX_MESSAGES = 80;
 const MAX_TOTAL_CHARS = 160_000;
 const ROLES = new Set(["system", "user", "assistant"]);
@@ -119,7 +118,7 @@ export async function handleChat(request: Request, env: Env): Promise<Response> 
   const site = env.get("URL") ?? new URL(request.url).origin;
   let upstream: Response;
   try {
-    upstream = await fetch(CHAT_URL, {
+    upstream = await fetch(`${settings.apiBase}/chat/completions`, {
       method: "POST",
       signal: request.signal,
       headers: {

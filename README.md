@@ -86,6 +86,7 @@ npm run build:all         # web app and extension
 | `POLYMIND_MODEL_ACCESS` | `free` | `free` lets visitors use only zero-cost models. `all` unlocks every model and spends your credits. |
 | `POLYMIND_MAX_OUTPUT_TOKENS` | `2048` | Cap on the length of a single answer. |
 | `POLYMIND_ALLOWED_ORIGINS` | none | Extra browser origins allowed to call the API, comma-separated. |
+| `POLYMIND_USE_NETLIFY_GATEWAY` | `false` | Netlify's AI Gateway injects its own OpenRouter credentials when you set no key, billed to your Netlify credits. Polymind ignores them unless this is `true`. |
 
 ### Protecting your key
 

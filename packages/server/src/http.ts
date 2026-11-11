@@ -9,6 +9,8 @@ export type AccessPolicy = "free" | "all";
 
 export interface ServerSettings {
   apiKey: string | undefined;
+  /** Base URL of the OpenRouter-compatible API, without a trailing slash. */
+  apiBase: string;
   mode: "live" | "demo";
   access: AccessPolicy;
   maxOutputTokens: number;
@@ -17,11 +19,34 @@ export interface ServerSettings {
 
 export const MAX_MODELS_PER_PROMPT = 4;
 
+const OPENROUTER_API = "https://openrouter.ai/api/v1";
+
+function isOpenRouterHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === "openrouter.ai" || host.endsWith(".openrouter.ai");
+  } catch {
+    return false;
+  }
+}
+
 export function readSettings(env: Env): ServerSettings {
-  const apiKey = env.get("OPENROUTER_API_KEY")?.trim() || undefined;
+  let apiKey = env.get("OPENROUTER_API_KEY")?.trim() || undefined;
+  let apiBase = env.get("OPENROUTER_BASE_URL")?.trim().replace(/\/+$/, "") || OPENROUTER_API;
+
+  // Netlify's AI Gateway injects its own OPENROUTER_API_KEY and OPENROUTER_BASE_URL
+  // whenever the site owner has not set a key. That key is billed to the owner's
+  // Netlify credits and only works against the gateway URL, so Polymind ignores the
+  // pair unless the owner opts in with POLYMIND_USE_NETLIFY_GATEWAY=true.
+  const injectedByGateway = !isOpenRouterHost(apiBase);
+  if (injectedByGateway && env.get("POLYMIND_USE_NETLIFY_GATEWAY")?.trim().toLowerCase() !== "true") {
+    apiKey = undefined;
+    apiBase = OPENROUTER_API;
+  }
   const cap = Number(env.get("POLYMIND_MAX_OUTPUT_TOKENS"));
   return {
     apiKey,
+    apiBase,
     mode: apiKey ? "live" : "demo",
     access: env.get("POLYMIND_MODEL_ACCESS")?.trim().toLowerCase() === "all" ? "all" : "free",
     maxOutputTokens: Number.isFinite(cap) && cap >= 64 ? Math.min(Math.floor(cap), 16_000) : 2048,
