@@ -10,6 +10,8 @@ Visitors never enter an API key. A small server function holds one key and decid
 | --- | --- |
 | ![Welcome screen in the dark theme](docs/welcome-dark.png) | ![Polymind in a narrow side panel](docs/side-panel.png) |
 
+**Live:** https://polymind-ai.netlify.app (landing page at `/`, the app itself at `/app`)
+
 ## What it does
 
 - **Side-by-side comparison.** Pick up to four models. Each answer streams into its own column with its own colour, response time and word count, so differences are easy to spot.
